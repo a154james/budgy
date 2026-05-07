@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  budget_web:
+    build: .
+    container_name: budget_app
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - FLASK_APP=app.py
+      - FLASK_ENV=production
