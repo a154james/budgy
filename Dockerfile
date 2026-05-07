@@ -1,17 +1,47 @@
-FROM python:3.11-slim
+FROM node:20-alpine AS base
 
+# Install dependencies only when needed
+FROM base AS deps
+RUN apk add --no-cache libc6-compat openssl
 WORKDIR /app
+COPY package.json package-lock.json* ./
+COPY prisma ./prisma
+RUN npm ci
+RUN npx prisma generate
 
-# Install dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy application code
+# Rebuild the source code only when needed
+FROM base AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+RUN npm run build
 
-# Ensure the data directory exists for the SQLite DB
-RUN mkdir -p /app/data
+# Production image, copy all the files and run next
+FROM base AS runner
+WORKDIR /app
+RUN apk add --no-cache openssl
+ENV NODE_ENV=production
+# Point to a directory that will be mounted as a persistent volume in Coolify
+ENV DATABASE_URL="file:/app/data/dev.db"
 
-EXPOSE 5000
+# Create a directory for the sqlite database
+RUN mkdir -p /app/data && chown node:node /app/data
 
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "app:app"]
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 nextjs
+
+COPY --from=builder /app/public ./public
+# Automatically leverage output traces to reduce image size
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
+COPY --from=builder --chown=nextjs:nodejs /app/docker-entrypoint.sh ./
+
+RUN chmod +x docker-entrypoint.sh
+
+USER nextjs
+EXPOSE 3000
+ENV PORT=3000
+ENV HOSTNAME="0.0.0.0"
+
+ENTRYPOINT ["./docker-entrypoint.sh"]
