@@ -24,11 +24,11 @@ ENV NODE_ENV=production
 # Point to a directory that will be mounted as a persistent volume in Coolify
 ENV DATABASE_URL="file:/app/data/dev.db"
 
-# Create a directory for the sqlite database
-RUN mkdir -p /app/data && chown node:node /app/data
-
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
+
+# Create a directory for the sqlite database
+RUN mkdir -p /app/data && chown nextjs:nodejs /app/data
 
 COPY --from=builder /app/public ./public
 # Automatically leverage output traces to reduce image size
